@@ -1,0 +1,317 @@
+#include <iostream>
+#include <vector>
+#include <SFML/Graphics.hpp>
+using namespace std;
+
+float delta;
+
+sf::RenderWindow *window;
+sf::Texture *backgroundtexture;
+
+bool gameRunning, gameOvered;
+int score;
+
+class Bird
+{
+
+private:
+    sf::Texture *texture;
+    float y;
+    float vel;
+
+public:
+    Bird()
+    {
+
+        texture = new sf::Texture();
+        texture->loadFromFile("bird1.png");
+
+        y = 400;
+        vel = 0;
+    }
+
+    sf::FloatRect getRect()
+    {
+
+        auto size = texture->getSize();
+
+        return {
+            50, y,
+            (float)size.x, (float)size.y};
+    }
+
+    void draw()
+    {
+
+        sf::Sprite birdSprite(*texture);
+        birdSprite.setRotation(8 * (vel / 300));
+        birdSprite.setPosition(50, y);
+
+        window->draw(birdSprite);
+    }
+
+    void update()
+    {
+
+        if (gameRunning)
+        {
+            vel += delta * 360;
+            y += vel * delta;
+
+            if (y < 0 or y + texture->getSize().y > backgroundtexture->getSize().y)
+            {
+                gameOvered = true;
+            }
+
+            if (y + texture->getSize().y > backgroundtexture->getSize().y)
+            {
+                y = (float)backgroundtexture->getSize().y - texture->getSize().y;
+                vel = 0;
+            }
+        }
+    }
+
+    ~Bird()
+    {
+
+        delete texture;
+    }
+
+    void flap()
+    {
+        if (not gameRunning or gameOvered)
+            return;
+        vel = -200;
+    }
+};
+Bird *bird;
+
+sf::Texture *upperPipe;
+sf::Texture *lowerPipe;
+
+class pipe
+{
+
+private:
+    float x;
+    float y;
+    bool scored;
+
+public:
+    pipe()
+    {
+
+        x = (float)(window->getSize().x + upperPipe->getSize().x);
+        y = 10.0f + (float)(rand() % 5 - 2) * 50;
+        scored = false;
+    }
+
+    sf::FloatRect getUpperRect() const
+    {
+        auto size = upperPipe->getSize();
+        return {
+            x, y + 400,
+            (float)size.x, (float)size.y};
+    }
+
+    sf::FloatRect getLowerRect() const
+    {
+        auto size = upperPipe->getSize();
+        return {
+            x, y - 400,
+            (float)size.x, (float)size.y};
+    }
+
+    void draw() const
+    {
+
+        sf::Sprite upperSprite(*upperPipe);
+        upperSprite.setPosition(x, y + 400);
+
+        sf::Sprite lowerSprite(*lowerPipe);
+        lowerSprite.setPosition(x, y - 400);
+
+        window->draw(upperSprite);
+        window->draw(lowerSprite);
+    }
+
+    void update()
+    {
+
+        if (not gameRunning or gameOvered)
+            return;
+
+        x -= 100 * delta;
+
+        auto birdRect = bird->getRect();
+
+        if (birdRect.intersects(getUpperRect()) or birdRect.intersects(getLowerRect()))
+        {
+
+            gameOvered = true;
+        }
+
+        if (x + upperPipe->getSize().x < birdRect.left and not scored)
+        {
+            scored = true;
+            score++;
+        }
+    }
+};
+
+vector<pipe *> pipes;
+
+sf::Texture *ground;
+sf::Clock *pipeGeneratingClock;
+
+sf::Font *font;
+
+void setup()
+{
+
+    srand((unsigned int)time(nullptr));
+    pipeGeneratingClock = new sf::Clock;
+
+    font = new sf::Font();
+    font->loadFromFile("fnt.TTF");
+
+    window = new sf::RenderWindow(sf::VideoMode(450, 650), "flappy fucking bird");
+    window->setPosition({117, 10});
+
+    bird = new Bird();
+
+    backgroundtexture = new sf::Texture();
+
+    backgroundtexture->loadFromFile("back.png");
+
+    ground = new sf::Texture();
+    ground->loadFromFile("gnd.png");
+
+    upperPipe = new sf::Texture();
+    lowerPipe = new sf::Texture();
+
+    sf::Image pipeImage;
+    pipeImage.loadFromFile("pipe1.png");
+    upperPipe->loadFromImage(pipeImage);
+    pipeImage.flipVertically();
+    lowerPipe->loadFromImage(pipeImage);
+}
+
+void destroy()
+{
+    delete window;
+    delete bird;
+    delete backgroundtexture;
+    delete pipeGeneratingClock;
+    delete font;
+}
+
+void update()
+{
+    bird->update();
+
+    for (const auto &pipe : pipes)
+    {
+        pipe->update();
+    }
+    if (gameRunning and not gameOvered)
+    {
+        if (pipeGeneratingClock->getElapsedTime().asSeconds() > 3.5)
+        {
+
+            pipeGeneratingClock->restart();
+            pipes.push_back(new pipe());
+
+            if (pipes.size() > 4)
+            {
+                delete pipes[0];
+                pipes.erase(pipes.begin());
+            }
+        }
+    }
+}
+
+void handleEvent(sf::Event &event)
+{
+
+    if (event.type == sf::Event::Closed)
+    {
+        window->close();
+    }
+
+    if (event.type == sf::Event::MouseButtonPressed)
+    {
+
+        if (not gameRunning)
+        {
+
+            /*sf::Text init;
+            init.setFont(*font);
+            init.setString("dsfsf");
+            init.setCharacterSize(24);
+            init.setFillColor(sf::Color::Red);
+            window->draw(init);
+
+            */
+
+            gameRunning = true;
+            pipeGeneratingClock->restart();
+            pipes.push_back(new pipe());
+        }
+
+        bird->flap();
+    }
+}
+
+float groundOffset;
+
+void draww()
+{
+
+    window->clear();
+    window->draw(sf::Sprite(*backgroundtexture));
+
+    for (const auto &pipe : pipes)
+    {
+        pipe->draw();
+    }
+    sf::Sprite groundSprite(*ground);
+
+    bird->draw();
+
+    sf::Text scoreText("Sxore: " + to_string(score), *font);
+    scoreText.setPosition(window->getSize().x / 2 - scoreText.getLocalBounds().width / 2, 5);
+    window->draw(scoreText);
+
+    groundSprite.setPosition(0, backgroundtexture->getSize().y);
+    window->draw(groundSprite);
+}
+
+int main()
+{
+
+    setup();
+
+    sf::Clock deltaclock;
+
+    while (window->isOpen())
+    {
+
+        sf::Event event{};
+
+        while (window->pollEvent(event))
+        {
+            handleEvent(event);
+        }
+        delta = deltaclock.getElapsedTime().asMicroseconds() / 1000.0f / 1000.0f;
+        deltaclock.restart();
+
+        update();
+        draww();
+        window->display();
+    }
+
+    destroy();
+
+    return EXIT_SUCCESS;
+}
